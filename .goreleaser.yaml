@@ -19,7 +19,7 @@ builds:
       - -X 'github.com/ramanasai/pulse/cmd.version={{.Version}}'
       - -X 'github.com/ramanasai/pulse/cmd.commit={{.Commit}}'
       - -X 'github.com/ramanasai/pulse/cmd.date={{.Date}}'
-    mod_timestamp: "{{ .CommitDate }}"
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ignore:
       - goos: windows
         goarch: arm64
