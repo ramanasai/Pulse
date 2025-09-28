@@ -1,0 +1,74 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+env:
+  - CGO_ENABLED=0
+
+builds:
+  - id: pulse
+    main: ./main.go
+    binary: pulse
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X 'github.com/ramanasai/pulse/cmd.version={{.Version}}'
+      - -X 'github.com/ramanasai/pulse/cmd.commit={{.Commit}}'
+      - -X 'github.com/ramanasai/pulse/cmd.date={{.Date}}'
+    mod_timestamp: "{{ .CommitDate }}"
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: archives
+    ids: [pulse]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+      - config.yaml.example
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^ci:'
+
+nfpms:
+  - id: linux-packages
+    package_name: pulse
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    vendor: "Pulse"
+    homepage: "https://github.com/ramanasai/Pulse"
+    maintainer: "ramanasai <you@example.com>"
+    description: "CLI + TUI personal logging and time tracking"
+    license: "MIT"
+    formats: [deb, rpm]
+    contents:
+      - src: "{{ .ProjectName }}"
+        dst: "/usr/local/bin/pulse"
+        type: "file"
+    umask: 0o022
+
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
+  github:
+    owner: ramanasai
+    name: Pulse
