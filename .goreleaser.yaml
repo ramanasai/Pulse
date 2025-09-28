@@ -51,18 +51,16 @@ changelog:
 
 nfpms:
   - id: linux-packages
+    ids: [pulse]
     package_name: pulse
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
     vendor: "Pulse"
     homepage: "https://github.com/ramanasai/Pulse"
-    maintainer: "ramanasai <you@example.com>"
+    maintainer: "ramanasai sairamana.p.b@gmail.com"
     description: "CLI + TUI personal logging and time tracking"
     license: "MIT"
     formats: [deb, rpm]
-    contents:
-      - src: "{{ .ProjectName }}"
-        dst: "/usr/local/bin/pulse"
-        type: "file"
+    bindir: /usr/local/bin
     umask: 0o022
 
 release:
@@ -75,4 +73,5 @@ release:
   extra_files:
     - glob: "dist/*/pulse"
     - glob: "dist/*/pulse.exe"
+
 
