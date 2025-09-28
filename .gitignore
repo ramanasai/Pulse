@@ -1,0 +1,30 @@
+# Binaries
+/bin/
+/dist/
+/pulse
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go tools
+*.log
+*.tmp
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Config (optional: keep if you want local only)
+config.yaml

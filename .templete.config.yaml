@@ -1,0 +1,10 @@
+theme: "default"
+
+reminder:
+  enabled: true
+  time: "17:00"            # HH:MM
+  timezone: "Asia/Kolkata" # optional; defaults to system local time
+  workdays: ["Mon","Tue","Wed","Thu","Fri"]
+  holidays:
+    - "2025-01-26"
+    - "2025-08-15"
