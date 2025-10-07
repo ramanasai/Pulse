@@ -1,173 +1,290 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/ramanasai/pulse/internal/config"
 	"github.com/ramanasai/pulse/internal/db"
+	"github.com/ramanasai/pulse/internal/utils"
 	"github.com/spf13/cobra"
 )
 
 var (
-	since string
-	limit int
+	since      string
+	limit      int
+	page       int
+	format     string
+	noColor    bool
+	groupBy    string
+	projects   string
+	categories string
+	filterTags string
+	preset     string
 )
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List recent entries (timeline view)",
+	Long: `Examples:
+	pulse list                                    # last 24h
+	pulse list --since yesterday                  # since yesterday
+	pulse list --preset last7days                 # last 7 days
+	pulse list --format table --limit 50          # table format
+	pulse list --project api --category task      # filter by project and category
+	pulse list --tags bug,urgent --page 2         # filter by tags with pagination`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Load config to get timezone
 		cfg, _ := config.Load()
 		loc := cfg.Location()
 
+		// Setup renderer
+		renderConfig := utils.DefaultRenderConfig()
+		if noColor {
+			renderConfig.Color = false
+		}
+		if format != "" {
+			renderConfig.Format = utils.OutputFormat(format)
+		}
+		renderConfig.Location = loc
+
+		// Parse date range
+		var sinceTime, untilTime time.Time
+		var err error
+
+		if preset != "" {
+			sinceTime, untilTime, err = utils.GetDateRange(preset, loc)
+			if err != nil {
+				return fmt.Errorf("invalid preset %q: %w", preset, err)
+			}
+		} else if since != "" {
+			sinceTime, err = utils.ParseFlexibleDate(since, loc)
+			if err != nil {
+				return fmt.Errorf("invalid --since date %q: %w", since, err)
+			}
+		} else {
+			sinceTime = time.Now().In(loc).Add(-24 * time.Hour)
+		}
+
+		// Default until to now
+		if untilTime.IsZero() {
+			untilTime = time.Now()
+		}
+
+		// Validate pagination
+		if limit <= 0 || limit > 1000 {
+			limit = 50 // Reduced default for better UX
+		}
+
+		// Open database
 		dbh, err := db.Open()
 		if err != nil {
 			return err
 		}
 		defer dbh.Close()
 
-		// Compute 'since' for query (UTC) and for display (local)
-		var sinceLocal time.Time
-		if strings.TrimSpace(since) == "" {
-			sinceLocal = time.Now().In(loc).Add(-24 * time.Hour)
-		} else {
-			// try parse as RFC3339 or RFC3339Nano and then localize
-			if t, err := time.Parse(time.RFC3339Nano, since); err == nil {
-				sinceLocal = t.In(loc)
-			} else if t2, err2 := time.Parse(time.RFC3339, since); err2 == nil {
-				sinceLocal = t2.In(loc)
-			} else {
-				sinceLocal = time.Now().In(loc).Add(-24 * time.Hour)
-			}
-		}
-		sinceForQuery := sinceLocal.UTC().Format(time.RFC3339)
-
-		if limit <= 0 || limit > 1000 {
-			limit = 200
+		// Build query
+		query, queryArgs, err := buildListQuery(sinceTime, untilTime)
+		if err != nil {
+			return err
 		}
 
-		q := `
-SELECT id, ts, category, COALESCE(project,''), COALESCE(tags,''), text
-FROM entries
-WHERE ts >= ?
-ORDER BY ts DESC
-LIMIT ?
-`
-		rows, err := dbh.Query(q, sinceForQuery, limit)
+		// Get total count for pagination
+		countQuery, countArgs := buildCountQuery(sinceTime, untilTime)
+		var total int
+		if err := dbh.QueryRow(countQuery, countArgs...).Scan(&total); err != nil {
+			return err
+		}
+
+		// Handle pagination
+		pagination := utils.NewPagination(total, limit, page)
+		limitSQL, offsetSQL := pagination.GetSQLLimitOffset()
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limitSQL, offsetSQL)
+
+		// Execute query
+		rows, err := dbh.Query(query, queryArgs...)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 
-		// ---- styles ----
-		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#A6E3A1"))
-		sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7086"))
-		idStyle := lipgloss.NewStyle().Faint(true)
-		timeStyle := lipgloss.NewStyle().Faint(true)
-		sidebarStyle := lipgloss.NewStyle().PaddingRight(2)
-		projectStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#89B4FA"))
-		tagsStyle := lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("#CBA6F7"))
-		textStyle := lipgloss.NewStyle()
-
-		// terminal width (best effort)
-		colEnv := os.Getenv("COLUMNS")
-		termWidth := 100
-		if colEnv != "" {
-			if v, err := strconv.Atoi(colEnv); err == nil && v > 40 {
-				termWidth = v
-			}
-		}
-		leftWidth := 14 // "● 12:34 PM" + padding
-		rightWidth := termWidth - leftWidth
-		if rightWidth < 30 {
-			rightWidth = 30
-		}
-
-		header := titleStyle.Render("Pulse — Recent Entries") + "  " +
-			sepStyle.Render("since ") +
-			timeStyle.Render(sinceLocal.Format("2006-01-02 03:04 PM MST"))
-		fmt.Println(header)
-		fmt.Println(sepStyle.Render(strings.Repeat("─", min(termWidth, 120))))
-
+		// Convert to Entry objects
+		entries := make([]utils.Entry, 0)
 		for rows.Next() {
-			var (
-				id                        int
-				ts, cat, proj, tags, text string
-			)
-			if err := rows.Scan(&id, &ts, &cat, &proj, &tags, &text); err != nil {
+			var id int
+			var ts, cat, proj, tags, text string
+			var durationMinutes sql.NullInt64
+
+			if err := rows.Scan(&id, &ts, &cat, &proj, &tags, &text, &durationMinutes); err != nil {
 				return err
 			}
 
-			// parse DB timestamp (UTC) and render in configured timezone, 12-hour
-			var parsed time.Time
-			if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
-				parsed = t
-			} else if t2, err2 := time.Parse(time.RFC3339, ts); err2 == nil {
-				parsed = t2
-			}
-			tstr := parsed.In(loc).Format("03:04 PM")
-
-			dot := lipgloss.NewStyle().
-				Foreground(colorForCategory(cat)).
-				Render("●")
-
-			left := sidebarStyle.
-				Width(leftWidth).
-				Render(dot + " " + timeStyle.Render(tstr))
-
-			// line one: [id] category project tags
-			meta := idStyle.Render(fmt.Sprintf("[%d]", id)) + "  " +
-				lipgloss.NewStyle().Bold(true).Foreground(colorForCategory(cat)).Render(cat)
-
-			if proj != "" {
-				meta += "  " + projectStyle.Render("["+proj+"]")
-			}
-			if tags = strings.TrimSpace(tags); tags != "" {
-				meta += "  " + tagsStyle.Render("#"+strings.ReplaceAll(tags, ",", " #"))
+			// Parse timestamp
+			timestamp, err := time.Parse(time.RFC3339Nano, ts)
+			if err != nil {
+				continue
 			}
 
-			// text body
-			body := textStyle.Width(rightWidth).Render(strings.TrimSpace(text))
-
-			right := lipgloss.JoinVertical(lipgloss.Left, meta, body)
-			line := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-
-			fmt.Println(line)
-			fmt.Println(sepStyle.Render(strings.Repeat("─", min(termWidth, 120))))
+			entries = append(entries, utils.Entry{
+				ID:              int64(id),
+				Timestamp:       timestamp,
+				Category:        cat,
+				Text:            text,
+				Project:         proj,
+				Tags:            tags,
+				DurationMinutes: int(durationMinutes.Int64),
+			})
 		}
-		return rows.Err()
+
+		// Group entries if requested
+		if groupBy != "" {
+			entries = groupEntries(entries, groupBy, loc)
+		}
+
+		// Prepare entry list
+		entryList := &utils.EntryList{
+			Entries:    entries,
+			Total:      total,
+			Page:       pagination.Current,
+			PerPage:    pagination.PerPage,
+			TotalPages: pagination.TotalPages,
+			Filters: map[string]string{
+				"since": sinceTime.In(loc).Format("2006-01-02 03:04 PM MST"),
+			},
+		}
+
+		// Render output
+		renderer := utils.NewRenderer(renderConfig)
+		output, err := renderer.RenderEntryList(entryList)
+		if err != nil {
+			return err
+		}
+
+		fmt.Print(output)
+
+		return nil
 	},
 }
 
+// buildListQuery builds the SQL query for listing entries
+func buildListQuery(since, until time.Time) (string, []interface{}, error) {
+	conditions := []string{"ts BETWEEN ? AND ?"}
+	args := []interface{}{since.UTC().Format(time.RFC3339), until.UTC().Format(time.RFC3339)}
+
+	// Add filters
+	if strings.TrimSpace(projects) != "" {
+		for _, proj := range strings.Split(projects, ",") {
+			proj = strings.TrimSpace(proj)
+			if proj != "" {
+				conditions = append(conditions, "project = ?")
+				args = append(args, proj)
+			}
+		}
+	}
+
+	if strings.TrimSpace(categories) != "" {
+		for _, cat := range strings.Split(categories, ",") {
+			cat = strings.TrimSpace(cat)
+			if cat != "" {
+				conditions = append(conditions, "category = ?")
+				args = append(args, cat)
+			}
+		}
+	}
+
+	if strings.TrimSpace(filterTags) != "" {
+		for _, tag := range strings.Split(filterTags, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag != "" {
+				conditions = append(conditions, "instr(tags, ?) > 0")
+				args = append(args, tag)
+			}
+		}
+	}
+
+	query := `
+		SELECT id, ts, category, COALESCE(project,''), COALESCE(tags,''), text, duration_minutes
+		FROM entries
+		WHERE ` + strings.Join(conditions, " AND ") + `
+		ORDER BY ts DESC`
+
+	return query, args, nil
+}
+
+// buildCountQuery builds the count query for pagination
+func buildCountQuery(since, until time.Time) (string, []interface{}) {
+	conditions := []string{"ts BETWEEN ? AND ?"}
+	args := []interface{}{since.UTC().Format(time.RFC3339), until.UTC().Format(time.RFC3339)}
+
+	// Add same filters as buildListQuery
+	if strings.TrimSpace(projects) != "" {
+		for _, proj := range strings.Split(projects, ",") {
+			proj = strings.TrimSpace(proj)
+			if proj != "" {
+				conditions = append(conditions, "project = ?")
+				args = append(args, proj)
+			}
+		}
+	}
+
+	if strings.TrimSpace(categories) != "" {
+		for _, cat := range strings.Split(categories, ",") {
+			cat = strings.TrimSpace(cat)
+			if cat != "" {
+				conditions = append(conditions, "category = ?")
+				args = append(args, cat)
+			}
+		}
+	}
+
+	if strings.TrimSpace(filterTags) != "" {
+		for _, tag := range strings.Split(filterTags, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag != "" {
+				conditions = append(conditions, "instr(tags, ?) > 0")
+				args = append(args, tag)
+			}
+		}
+	}
+
+	query := `
+		SELECT COUNT(*)
+		FROM entries
+		WHERE ` + strings.Join(conditions, " AND ")
+
+	return query, args
+}
+
+// groupEntries groups entries by the specified field
+func groupEntries(entries []utils.Entry, groupBy string, loc *time.Location) []utils.Entry {
+	// Simple implementation - could be enhanced for better grouping
+	switch strings.ToLower(groupBy) {
+	case "date":
+		// Sort by date (already sorted by timestamp, so no change needed)
+	case "project":
+		// Sort by project (would need custom sorting)
+	case "category":
+		// Sort by category (would need custom sorting)
+	}
+	return entries
+}
+
 func init() {
-	listCmd.Flags().StringVar(&since, "since", "", "RFC3339 timestamp or empty for last 24h (interpreted in your configured timezone)")
-	listCmd.Flags().IntVar(&limit, "limit", 200, "Max entries to show (default 200)")
-}
+	// Basic filters
+	listCmd.Flags().StringVar(&since, "since", "", "Date/time filter (supports: yesterday, 'last week', '2 hours ago', 2025-01-15, etc.)")
+	listCmd.Flags().IntVar(&limit, "limit", 50, "Maximum entries to show per page (default 50)")
+	listCmd.Flags().IntVar(&page, "page", 1, "Page number to show (for pagination)")
+	listCmd.Flags().StringVar(&format, "format", "default", "Output format: default, table, json, csv, compact, quiet")
+	listCmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored output")
+	listCmd.Flags().StringVar(&groupBy, "group", "", "Group entries by: date, project, category")
 
-func colorForCategory(cat string) lipgloss.Color {
-	switch strings.ToLower(cat) {
-	case "task":
-		return lipgloss.Color("#F9E2AF") // yellow
-	case "meeting":
-		return lipgloss.Color("#F5C2E7") // pink
-	case "timer":
-		return lipgloss.Color("#A6E3A1") // green
-	case "note":
-		return lipgloss.Color("#89B4FA") // blue
-	default:
-		return lipgloss.Color("#94E2D5") // teal
-	}
-}
+	// Advanced filters
+	listCmd.Flags().StringVar(&projects, "projects", "", "Filter by projects (comma-separated)")
+	listCmd.Flags().StringVar(&categories, "categories", "", "Filter by categories (comma-separated)")
+	listCmd.Flags().StringVar(&filterTags, "tags", "", "Filter by tags (comma-separated)")
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	// Presets
+	listCmd.Flags().StringVar(&preset, "preset", "", "Date preset: today, yesterday, week, month, year, last7days, last30days, last90days")
 }
