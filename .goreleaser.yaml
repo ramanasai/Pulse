@@ -16,9 +16,9 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X 'github.com/ramanasai/pulse/cmd.version={{.Version}}'
-      - -X 'github.com/ramanasai/pulse/cmd.commit={{.Commit}}'
-      - -X 'github.com/ramanasai/pulse/cmd.date={{.Date}}'
+      - -X 'github.com/ramanasai/pulse.buildVersion={{.Version}}'
+      - -X 'github.com/ramanasai/pulse.buildCommit={{.Commit}}'
+      - -X 'github.com/ramanasai/pulse.buildDate={{.Date}}'
     mod_timestamp: "{{ .CommitTimestamp }}"
     ignore:
       - goos: windows

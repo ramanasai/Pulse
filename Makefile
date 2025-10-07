@@ -1,15 +1,34 @@
-.PHONY: build run fmt tidy clean test release
+.PHONY: build build-local run fmt tidy clean test release install dev
 
 BINARY := bin/pulse
-LDFLAGS := -s -w -X 'main.version=$(shell git describe --tags --always --dirty)'
 
-# Default build (static binary, stripped)
+# Package path where version vars are defined
+PKG := github.com/ramanasai/pulse
+
+# ldflags for version metadata
+LDFLAGS := -s -w \
+	-X '$(PKG).buildVersion=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev)' \
+	-X '$(PKG).buildCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo none)' \
+	-X '$(PKG).buildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)'
+
+all: build-local
+
+
+build-local:
+	@mkdir -p bin
+	GOFLAGS="-trimpath" go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+	@chmod +x $(BINARY)
+	@echo "✅ Built local binary at $(BINARY)"
+
 build:
-	GOFLAGS="-trimpath" CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./...
+	@mkdir -p bin
+	GOFLAGS="-trimpath" CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+	@chmod +x $(BINARY)
+	@echo "✅ Built static binary at $(BINARY)"
 
 # Run directly (dev mode)
 run:
-	go run ./...
+	go run .
 
 # Format code
 fmt:
@@ -35,6 +54,19 @@ release: clean
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/pulse-linux-arm64 .
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/pulse-windows-amd64.exe .
 
+
+# Install locally
+install: build-local
+	@echo "📦 Installing $(BINARY) to /usr/local/bin..."
+	@sudo cp $(BINARY) /usr/local/bin/pulse
+	@echo "✅ Installed pulse to /usr/local/bin"
+
+# Development (build with race detector)
+dev:
+	@mkdir -p bin
+	go build -race -o $(BINARY)-dev .
+	@chmod +x $(BINARY)-dev
+	@echo "🔧 Built development binary at $(BINARY)-dev"
 
 snapshot:
 	goreleaser release --snapshot --clean

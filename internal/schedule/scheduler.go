@@ -60,7 +60,10 @@ func RunConfigured(ctx context.Context, cfg config.Config, f func()) {
 		select {
 		case <-ctx.Done():
 			if !t.Stop() {
-				select { case <-t.C: default: }
+				select {
+				case <-t.C:
+				default:
+				}
 			}
 			return
 		case <-t.C:
