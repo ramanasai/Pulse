@@ -7,6 +7,9 @@ LDFLAGS := -s -w -X 'main.version=$(shell git describe --tags --always --dirty)'
 build:
 	GOFLAGS="-trimpath" CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./...
 
+build-local:
+	GOFLAGS="-trimpath" CGO_ENABLED=0 go build -ldflags "-s -w -X 'main.version=v0.1.0-dirty'" -o bin/pulse .
+
 # Run directly (dev mode)
 run:
 	go run ./...

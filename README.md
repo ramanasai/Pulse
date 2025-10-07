@@ -1,21 +1,27 @@
-# Pulse 🕒  
-A fast, colorful **CLI + TUI personal logging and time tracking tool** built in Go.  
+# Pulse 🕒
+A fast, colorful **CLI personal logging and time tracking tool** built in Go.
 Track work, notes, and timers right from your terminal — with SQLite storage, full-text search, and daily reminders.
 
 ---
 
 ## ✨ Features
 - **CLI commands**
-  - `pulse log "text"` → quick notes
-  - `pulse start/stop` → track timers
-  - `pulse list` → timeline view with colors
-  - `pulse summary` → daily breakdowns
-  - `pulse search` → full-text search with highlights
-- **TUI** (`pulse tui`)  
-  Scroll through logs with a clean, resizable interface
-- **Reminders**  
-  Configurable “end of day” reminder (default 17:00, Mon–Fri, skip holidays)
-- **SQLite storage**  
+  - `pulse log "text"` → quick notes with categories, projects, and tags
+  - `pulse start/stop` → track timers with projects and tags
+  - `pulse list` → colorful timeline view with filtering options
+  - `pulse summary` → daily breakdowns by category
+  - `pulse search` → full-text search with highlights and filters
+- **Timer Management**
+  - Start/stop timers with automatic duration calculation
+  - Support for concurrent timers with `--allow-multiple`
+  - Add stop notes when completing tasks
+- **Organization**
+  - Categories: note, task, meeting, timer
+  - Project-based organization
+  - Tag system for flexible filtering
+- **Reminders**
+  Configurable "end of day" reminder (default 17:00, Mon–Fri, skip holidays)
+- **SQLite storage**
   Local, portable, zero-config database
 - **Colorful output** with [Lipgloss](https://github.com/charmbracelet/lipgloss)
 - **Cross-platform** binaries for macOS, Linux, Windows
@@ -41,21 +47,71 @@ Coming soon (via GitHub Actions releases).
 ## ⚡ Quickstart
 
 ```bash
-# Log a note
-pulse log "Investigated incident 123"
+# Log different types of entries
+pulse log "Investigated incident 123"                                    # Basic note
+pulse log "Team standup meeting" -c meeting -p backend -t daily           # Meeting with project & tags
+pulse log "Code review PR #456" -c task -p frontend -t review,urgent     # Task with multiple tags
 
 # Start and stop timers
-pulse start "Working on feature X" -p sesuite -t urgent
-pulse stop --note "Finished draft"
+pulse start "Working on feature X" -p myproject -t development           # Start timer with project & tags
+pulse stop --note "Completed implementation"                             # Stop timer with note
+pulse start "Quick research" --allow-multiple                            # Start concurrent timer
+pulse stop -i 42 --note "Research done"                                  # Stop specific timer by ID
 
-# List entries (last 24h by default)
-pulse list
+# View entries
+pulse list                                                               # Show last 24h with colors
+pulse list --limit 10                                                    # Limit to 10 entries
+pulse list --since 2025-10-01T09:00:00                                   # Show entries since specific time
 
-# Search across history (with highlights)
-pulse search "deploy failed" --project sesuite --tags bug
+# Search and analyze
+pulse search "deploy failed"                                             # Full-text search
+pulse search "feature" --project myproject                               # Search within project
+pulse search "urgent" --tags review                                      # Search by tags
+pulse search "text:incident"                                             # Search specific field
+pulse search "deploy*"                                                   # Wildcard search
 
-# TUI interface
-pulse tui
+# Daily summary
+pulse summary                                                            # Show today's breakdown by category
+```
+
+## 📋 Command Reference
+
+### Logging Entries
+```bash
+pulse log "Your message"                    # Basic note entry
+pulse log "Message" -c task                # Specify category (note|task|meeting|timer)
+pulse log "Message" -p project-name         # Assign to project
+pulse log "Message" -t tag1,tag2           # Add multiple tags
+pulse log "Meeting notes" -c meeting -p client-work -t important,review
+```
+
+### Timer Management
+```bash
+pulse start "Working on feature"           # Start a timer
+pulse start "Task" -p project -t dev       # With project and tags
+pulse start "Task" --allow-multiple        # Allow concurrent timers
+pulse stop                                 # Stop active timer
+pulse stop --note "Task completed"         # Add stop note
+pulse stop -i 42 --note "Done"             # Stop specific timer by ID
+```
+
+### Viewing Data
+```bash
+pulse list                                 # List last 24h entries
+pulse list --limit 50                     # Limit number of entries
+pulse list --since 2025-10-01T09:00:00    # Entries since specific time
+pulse summary                              # Daily summary by category
+```
+
+### Search
+```bash
+pulse search "query"                       # Basic full-text search
+pulse search "text:specific"               # Search text field only
+pulse search "pattern*"                    # Wildcard search
+pulse search "query" --project proj        # Filter by project
+pulse search "query" --tags tag1,tag2      # Filter by tags
+pulse search "query" --since 2025-10-01    # Date range search
+pulse search "query" --until 2025-10-07    # End date range
 ```
 
 ---
@@ -84,17 +140,18 @@ reminder:
 ### Useful commands
 
 ```bash
-make build     # build binary into bin/pulse
-make run       # run in dev mode
-make test      # run tests
-make release   # cross-compile (dist/*)
+make build       # build binary into bin/pulse
+make build-local # build local development binary
+make run         # run in dev mode
+make test        # run tests
+make release     # cross-compile (dist/*)
+make tidy        # clean up dependencies
 ```
 
 ### Dependencies
 
 * Go 1.25+
 * [Cobra](https://github.com/spf13/cobra) for CLI
-* [Bubble Tea](https://github.com/charmbracelet/bubbletea) for TUI
 * [Lipgloss](https://github.com/charmbracelet/lipgloss) for styling
 * [Beeep](https://github.com/gen2brain/beeep) for notifications
 * [SQLite (modernc.org/sqlite)](https://pkg.go.dev/modernc.org/sqlite)
