@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ramanasai/pulse/internal/db"
-	"github.com/ramanasai/pulse/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -34,8 +33,7 @@ var summaryCmd = &cobra.Command{
 		}
 		defer rows.Close()
 
-		// fmt.Printf("Today (%s):\n", start.Format("2006-01-02"))
-		fmt.Println(ui.DefaultTheme.Title.Render("Today"), ui.DefaultTheme.Value.Render(start.Format("2006-01-02")))
+	fmt.Printf("Today (%s):\n", start.Format("2006-01-02"))
 		var totalCount int64
 		var totalMins int64
 		for rows.Next() {
@@ -44,18 +42,14 @@ var summaryCmd = &cobra.Command{
 			if err := rows.Scan(&cat, &n, &mins); err != nil {
 				return err
 			}
-			// fmt.Printf("  %-10s %3d items, %4d mins\n", cat, n.Int64, mins.Int64)
-			line := fmt.Sprintf("  %-10s %3d items, %4d mins", cat, n.Int64, mins.Int64)
-			fmt.Println(ui.DefaultTheme.Value.Render(line))
+	fmt.Printf("  %-10s %3d items, %4d mins\n", cat, n.Int64, mins.Int64)
 			totalCount += n.Int64
 			totalMins += mins.Int64
 		}
 		if err := rows.Err(); err != nil {
 			return err
 		}
-		// fmt.Printf("  %-10s %3d items, %4d mins\n", "TOTAL", totalCount, totalMins)
-		total := fmt.Sprintf("  %-10s %3d items, %4d mins", "TOTAL", totalCount, totalMins)
-		fmt.Println(ui.DefaultTheme.Success.Render(total))
+		fmt.Printf("  %-10s %3d items, %4d mins\n", "TOTAL", totalCount, totalMins)
 		return nil
 	},
 }
