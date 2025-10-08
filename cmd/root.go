@@ -39,5 +39,5 @@ func init() {
 	}
 
 	// Add commands; other files define these vars
-	rootCmd.AddCommand(logCmd, listCmd, startCmd, stopCmd, summaryCmd, searchCmd)
+	rootCmd.AddCommand(logCmd, listCmd, startCmd, stopCmd, summaryCmd, searchCmd, editCmd)
 }

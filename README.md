@@ -9,6 +9,7 @@ Track work, notes, and timers right from your terminal — with SQLite storage, 
   - `pulse log "text"` → quick notes with categories, projects, and tags
   - `pulse start/stop` → track timers with projects and tags
   - `pulse list` → enhanced timeline view with pagination, filtering, and multiple output formats
+  - `pulse edit [id]` → edit existing log entries (text, category, project, tags)
   - `pulse summary` → daily breakdowns by category
   - `pulse search` → advanced full-text search with field-specific queries, highlighting, and filtering
 - **🆕 Enhanced Output Formats**
@@ -79,6 +80,12 @@ pulse stop --note "Completed implementation"                             # Stop 
 pulse start "Quick research" --allow-multiple                            # Start concurrent timer
 pulse stop -i 42 --note "Research done"                                  # Stop specific timer by ID
 
+# Edit existing entries (NEW!)
+pulse edit 42 --text "Updated message"                                    # Edit text
+pulse edit 42 --category task --project api                              # Edit category and project
+pulse edit 42 --tags urgent,review                                        # Edit tags
+pulse edit 42 --text "New title" -c meeting -p client-work -t important  # Edit multiple fields
+
 # View entries (NEW: Enhanced with pagination and formats!)
 pulse list                                                               # Show last 24h with colors
 pulse list --format table --limit 10                                     # Table format with pagination
@@ -118,6 +125,15 @@ pulse start "Task" --allow-multiple        # Allow concurrent timers
 pulse stop                                 # Stop active timer
 pulse stop --note "Task completed"         # Add stop note
 pulse stop -i 42 --note "Done"             # Stop specific timer by ID
+```
+
+### Editing Entries (NEW!)
+```bash
+pulse edit 42 --text "Updated message"      # Edit text content
+pulse edit 42 --category task               # Change category (note|task|meeting|timer)
+pulse edit 42 --project newproject          # Change project
+pulse edit 42 --tags urgent,review          # Update tags
+pulse edit 42 --text "New title" -c meeting -p client-work -t important  # Multiple fields
 ```
 
 ### Viewing Data (NEW: Enhanced!)
@@ -301,12 +317,9 @@ make tidy        # clean up dependencies
 ## 🗺️ Roadmap
 
 * [ ] Fuzzy search and typo tolerance
-* [ ] Saved searches and frequently used filter presets
 * [ ] Daily/weekly reports (Markdown templates)
 * [ ] Data visualization and charts
 * [ ] Web dashboard interface
-* [ ] Integration with calendar systems
-* [ ] Packaging via GoReleaser
 * [ ] Plugin system for custom commands
 
 ---
